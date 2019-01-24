@@ -11,4 +11,7 @@
 
 # pic 效果图
 
-one: ![](pic_sphere_1.png) two: ![](pic_sphere_2.png)
+one: 
+![](pic_sphere_1.png)
+two: 
+![](pic_sphere_2.png)
