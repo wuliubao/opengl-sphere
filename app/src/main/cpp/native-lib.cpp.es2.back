@@ -1,0 +1,342 @@
+#include <jni.h>
+#include <string>
+#include <GLES3/gl3.h>
+#include <android/log.h>
+#include <stdlib.h>
+
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtc/type_ptr.hpp"
+#include <math.h>
+
+#define LOG_TAG "NATIVE-LIB"
+#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+#define PI glm::pi <GLfloat> ()
+#define stacks 50
+#define slices 50
+#define radius 0.5
+
+int numberOfPoints = 0;
+int numberOfIndexes = 0;
+GLfloat vertices[(stacks + 1) * slices * 3];
+GLuint indices[stacks * slices * 10];
+
+int dx = 0, dy = 0, dz = 0;
+
+const GLuint WIDTH = 800, HEIGHT = 600;
+
+const GLchar* vertexShaderSource =
+        "#version 300 es\n"
+
+        "layout (location = 0) in vec3 position;\n"
+
+        "uniform mat4 model;\n"
+        "uniform mat4 view;\n"
+        "uniform mat4 adbb;\n"
+
+
+        "void main()\n"
+        "{\n"
+        "	gl_Position = adbb * vec4(position, 1.0f);\n"
+        "}\n";
+
+const GLchar* fragmentShaderSource =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 color;\n"
+
+        "void main()\n"
+        "{\n"
+        "	color = vec4(1.0,0.0,0.0,1.0);\n"
+        "}\n";
+
+
+GLuint VBO, VAO, EBO;
+
+void getsphereCoords()
+{
+    // Calc The Vertices
+    for (int i = 0; i <= slices; i++)
+    {
+        float phi = i * (glm::pi<float>() / slices) ;
+
+
+        // Loop Through Slices
+        for (int j = 0; j < stacks; j++)
+        {
+            float theta = j * (glm::pi <float>() * 2 / stacks);
+
+            // Calc The Vertex Positions
+            float x = cosf(theta) * sinf(phi);
+            float y = cosf(phi);
+            float z = sinf(theta) * sinf(phi);
+
+            // Push Back Vertex Data
+            vertices[numberOfPoints++] = x * radius;
+            vertices[numberOfPoints++] = y * radius;
+            vertices[numberOfPoints++] = z * radius;
+        }
+    }
+    // Calc The Index Positions
+    for (int i = 0; i < numberOfPoints / 3 - stacks; i++)
+    {
+        if ((i + 1) % stacks == 0)
+        {
+            indices[numberOfIndexes++] = i;
+            indices[numberOfIndexes++] = i - stacks + 1;
+            indices[numberOfIndexes++] = i + stacks;
+
+            indices[numberOfIndexes++] = i - stacks + 1;
+            indices[numberOfIndexes++] = i + stacks;
+            if (i + 1 == numberOfPoints / 3)
+                indices[numberOfIndexes++] = numberOfPoints - stacks;
+            else
+                indices[numberOfIndexes++] = i + 1;
+        }
+        else
+        {
+            indices[numberOfIndexes++] = i;
+            indices[numberOfIndexes++] = i + 1;
+            indices[numberOfIndexes++] = i + stacks;
+
+            indices[numberOfIndexes++] = i + 1;
+            indices[numberOfIndexes++] = i + stacks;
+            indices[numberOfIndexes++] = i + stacks + 1;
+        }
+    }
+}
+
+void getSphereVertex() {
+
+
+//    glGenVertexArrays(1, &VAO);
+//    glBindVertexArray(VAO);
+
+    glGenBuffers(1, &EBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, numberOfIndexes * sizeof(GLuint), indices, GL_STATIC_DRAW);
+
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, numberOfPoints * sizeof(GLfloat), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+}
+
+static const char VERTEX_SHADER[]=
+        "#version 300 es\n"
+        "layout(location = 0) in vec4 vPosition;\n"
+        "void main(){\n"
+        "gl_Position = vPosition;\n"
+        "}\n";
+static const char FRAGMENT_SHADER[]=
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 fragColor;\n"
+        "void main(){\n"
+        "fragColor = vec4(1.0,0.0,0.0,1.0);\n"
+        "}\n";
+static const GLfloat VERTEX[]={
+        -0.5f,-0.5f,0.0f,
+        0.5f,-0.5f,0.0f,
+        0.0f,0.5f,0.0f,
+        1.0f,0.5f,0.0f,
+};
+bool checkGlError(const char* funcName) {
+    GLint err = glGetError();
+    if (err != GL_NO_ERROR) {
+        ALOGE("GL error after %s(): 0x%08x\n", funcName, err);
+        return true;
+    }
+    return false;
+}
+
+GLuint program;
+
+GLuint createShader(GLenum shaderType, const char* src) {
+    GLuint shader = glCreateShader(shaderType);
+    if (!shader) {
+        checkGlError("glCreateShader");
+        return 0;
+    }
+    glShaderSource(shader, 1, &src, NULL);
+    GLint compiled = GL_FALSE;
+    glCompileShader(shader);
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+        GLint infoLogLen = 0;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLogLen);
+        if (infoLogLen > 0) {
+            GLchar* infoLog = (GLchar*)malloc(infoLogLen);
+            if (infoLog) {
+                glGetShaderInfoLog(shader, infoLogLen, NULL, infoLog);
+                ALOGE("Could not compile %s shader:\n%s\n",
+                      shaderType == GL_VERTEX_SHADER ? "vertex" : "fragment",
+                      infoLog);
+                free(infoLog);
+            }
+        }
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+GLuint createProgram(const char* vtxSrc, const char* fragSrc) {
+    GLuint vtxShader = 0;
+    GLuint fragShader = 0;
+    GLuint program = 0;
+    GLint linked = GL_FALSE;
+    vtxShader = createShader(GL_VERTEX_SHADER, vtxSrc);
+    if (!vtxShader)
+        goto exit;
+    fragShader = createShader(GL_FRAGMENT_SHADER, fragSrc);
+    if (!fragShader)
+        goto exit;
+    program = glCreateProgram();
+    if (!program) {
+        checkGlError("glCreateProgram");
+        goto exit;
+    }
+    glAttachShader(program, vtxShader);
+    glAttachShader(program, fragShader);
+    glLinkProgram(program);
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        ALOGE("Could not link program");
+        GLint infoLogLen = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLen);
+        if (infoLogLen) {
+            GLchar* infoLog = (GLchar*)malloc(infoLogLen);
+            if (infoLog) {
+                glGetProgramInfoLog(program, infoLogLen, NULL, infoLog);
+                ALOGE("Could not link program:\n%s\n", infoLog);
+                free(infoLog);
+            }
+        }
+        glDeleteProgram(program);
+        program = 0;
+    }
+    exit:
+    glDeleteShader(vtxShader);
+    glDeleteShader(fragShader);
+    return program;
+}
+
+
+//void createSphere() {
+//    GLuint VBO,VAO,EBO;
+//    float sphereVertices [] = {};
+//    glGenBuffers(1, &VBO);
+//    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+//    glBufferData(GL_ARRAY_BUFFER, sizeof(VERTEX), VERTEX, GL_STATIC_DRAW);
+//
+//    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+//    glEnableVertexAttribArray(0);
+//    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+//}
+
+void drawSphere() {
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(program);
+
+ //   glBindVertexArray(VAO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+
+    glm::mat4 view;
+    glm::mat4 projection;
+    view = glm::translate(view, glm::vec3((float)dx * 0.15f + 0.0f, (float)dy * 0.15f + 0.0f, (float)dz * 0.15f + -1.5f));
+    projection = glm::perspective(45.0f, (GLfloat)WIDTH / (GLfloat)HEIGHT, 0.1f, 100.0f);
+    // Get their uniform location
+    GLint modelLoc = glGetUniformLocation(program, "model");
+    GLint viewLoc = glGetUniformLocation(program, "view");
+    GLint projLoc = glGetUniformLocation(program, "projection");
+    // Pass the matrices to the shader
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    // Note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+    // Calculate the model matrix for each object and pass it to shader before drawing
+    glm::mat4 model;
+    GLfloat angle = 20.0f ;
+  //  model = glm::rotate(model, (GLfloat)50.0f, glm::vec3(1.0f, 0.3f, 0.5f));
+    model = glm::scale(model, glm::vec3(0.5, 0.5, 0.5));
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+    glm::mat4 transform = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+    transform = glm::translate(transform, glm::vec3(0.5f, -0.5f, 0.0f));
+    GLint projLocaa = glGetUniformLocation(program, "adbb");
+    glUniformMatrix4fv(projLocaa, 1, GL_FALSE, glm::value_ptr(transform));
+    glDrawElements(GL_TRIANGLES, numberOfIndexes, GL_UNSIGNED_INT, 0);
+
+
+    // Now with the uniform matrix being replaced with new transformations, draw it again.
+    //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    //glBindVertexArray(0);
+}
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_liubao_gl_MainActivity_stringFromJNI(
+        JNIEnv *env,
+        jobject /* this */) {
+    std::string hello = "Hello from C++";
+    return env->NewStringUTF(hello.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_liubao_gl_GLNativeRender_nativeInit(
+        JNIEnv *env,
+        jclass type
+        ){
+    program = createProgram(vertexShaderSource, FRAGMENT_SHADER);
+    if (!program){
+        ALOGE("程序创建失败");
+        return JNI_FALSE;
+    }
+    getsphereCoords();
+    getSphereVertex();
+    glClearColor(0,0,0,0);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_liubao_gl_GLNativeRender_nativeDrawFrame(
+        JNIEnv *env,
+        jclass type
+        ) {
+
+
+    drawSphere();
+//    glClear(GL_COLOR_BUFFER_BIT);
+//    glUseProgram(program);
+//    createSphere();
+//    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,VERTEX);
+//    glEnableVertexAttribArray(0);
+//    glDrawArrays(GL_TRIANGLES,0,3);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_liubao_gl_GLNativeRender_nativeResize (
+        JNIEnv* env,
+        jclass type,
+        jint width,
+        jint height
+        ){
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_liubao_gl_GLNativeRender_nativeDispatchEvent(
+        JNIEnv* env,
+        jclass type,
+        jfloat x,
+        jfloat y
+        ){
+    ALOGE("touch x:", x);
+    ALOGE("touch y:", y);
+}
