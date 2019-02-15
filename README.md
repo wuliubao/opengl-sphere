@@ -10,8 +10,6 @@
 - 可用触摸球体观看球体不同位置
 
 # pic 效果图
-- one: 
 ![](pic_sphere_1.png)
 
-- two: 
 ![](pic_sphere_2.png)
