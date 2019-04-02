@@ -9,7 +9,7 @@
 - 使用android CMake jni 配置, c++编写
 - 可用触摸球体观看球体不同位置
 
-# pic 效果图
+# Pic 效果图
 ![](pic_sphere_1.png)
 
 ![](pic_sphere_2.png)
